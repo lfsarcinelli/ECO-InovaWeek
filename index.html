@@ -590,6 +590,7 @@
             selectedLocker: 5, // Padrão selecionado para o Pitch
             isCharging: false,
             isTransitioning: false, // Previne seleção de outros lockers durante animações
+            isThermalEmergency: false, // Bloqueia todo o totem
             demoMode: false,
             animationFrameId: null,
             lastFrameTime: null,
@@ -658,6 +659,14 @@
            RECURSOS DE PITCH E TECLADO
            ========================================= */
         function simulateThermalAlert() {
+            if (state.isThermalEmergency) {
+                // Alterna para desligar a emergência e reinicia o sistema para a próxima demonstração
+                state.isThermalEmergency = false;
+                addLog(`[SISTEMA] Alerta térmico desativado pela Segurança. Reiniciando terminal...`, 'success');
+                resetSimulation();
+                return;
+            }
+
             if (!state.isCharging) {
                 addLog(`[AVISO] Inicie uma recarga antes de simular o alerta térmico.`, 'warning');
                 return;
@@ -668,6 +677,7 @@
                 state.animationFrameId = null;
             }
             state.isCharging = false;
+            state.isThermalEmergency = true;
             
             // Log vermelho crítico
             addLog(`[CRÍTICO] Corte preventivo acionado no Locker ${state.selectedLocker.toString().padStart(2, '0')} - Isolamento térmico ativo`, 'error');
@@ -710,6 +720,7 @@
             // Reseta todo o estado (útil para pitch)
             state.isCharging = false;
             state.isTransitioning = false;
+            state.isThermalEmergency = false;
             state.demoMode = false;
             if (state.animationFrameId) cancelAnimationFrame(state.animationFrameId);
             state.secondsElapsed = 0;
@@ -872,6 +883,10 @@
         }
 
         function selectLocker(id) {
+            if (state.isThermalEmergency) {
+                addLog(`[SISTEMA BLOQUEADO] Alerta térmico ativo. Seleção de lockers bloqueada.`, 'error');
+                return;
+            }
             if (state.isCharging || state.isTransitioning) return;
             
             const prevLocker = state.selectedLocker;
