@@ -291,10 +291,15 @@
                         <span class="text-[10px] uppercase font-mono text-gray-500 flex items-center">
                             <i data-lucide="terminal" class="w-3 h-3 mr-1"></i> Console de Hardware
                         </span>
-                        <div class="flex space-x-1.5">
-                            <div class="w-2 h-2 rounded-full bg-red-500/80"></div>
-                            <div class="w-2 h-2 rounded-full bg-yellow-500/80"></div>
-                            <div class="w-2 h-2 rounded-full bg-green-500/80"></div>
+                        <div class="flex items-center space-x-2">
+                            <button onclick="simulateThermalAlert()" class="text-[9px] uppercase font-mono px-1.5 py-0.5 rounded border border-red-900/50 text-red-500 hover:bg-red-900/30 transition-colors flex items-center" title="Simular Alerta Térmico">
+                                ⚠️ Alerta
+                            </button>
+                            <div class="flex space-x-1.5">
+                                <div class="w-2 h-2 rounded-full bg-red-500/80"></div>
+                                <div class="w-2 h-2 rounded-full bg-yellow-500/80"></div>
+                                <div class="w-2 h-2 rounded-full bg-green-500/80"></div>
+                            </div>
                         </div>
                     </div>
                     <div id="console-logs" class="flex-1 overflow-y-auto space-y-1 text-[10px] font-mono tracking-tight break-all flex flex-col-reverse p-1">
@@ -613,6 +618,148 @@
             co2Saved: 24.8
         };
 
+        // -----------------------------------------
+        // WEB AUDIO API - EFEITOS SONOROS (Nativo)
+        // -----------------------------------------
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        function playClickSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.1);
+            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.1);
+        }
+
+        function playSuccessSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+            osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.1);
+            gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 0.05);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.3);
+        }
+
+        /* =========================================
+           RECURSOS DE PITCH E TECLADO
+           ========================================= */
+        function simulateThermalAlert() {
+            if (!state.isCharging) {
+                addLog(`[AVISO] Inicie uma recarga antes de simular o alerta térmico.`, 'warning');
+                return;
+            }
+            // Para o timer
+            if (state.animationFrameId) {
+                cancelAnimationFrame(state.animationFrameId);
+                state.animationFrameId = null;
+            }
+            state.isCharging = false;
+            
+            // Log vermelho crítico
+            addLog(`[CRÍTICO] Corte preventivo acionado no Locker ${state.selectedLocker.toString().padStart(2, '0')} - Isolamento térmico ativo`, 'error');
+            addLog(`[SENSOR] Temperatura subiu abruptamente para 58.2°C`, 'error');
+            
+            // Status no locker
+            const elLock = document.getElementById('locker-lock-status');
+            elLock.textContent = '[EMERGÊNCIA / CORTE DE ENERGIA]';
+            elLock.className = 'text-[11px] tracking-wide font-bold text-red-500 animate-pulse glow-red-text';
+            
+            // Atualiza UI dos armários afetados
+            const lockerEls = [
+                document.getElementById(`locker-mini-${state.selectedLocker}`),
+                document.getElementById(`locker-full-${state.selectedLocker}`)
+            ];
+            lockerEls.forEach(el => {
+                if(!el) return;
+                el.classList.add('bg-red-900/20', 'border-red-500/50');
+                const statusTxt = el.querySelector('.locker-status-text');
+                if (statusTxt) {
+                    statusTxt.textContent = 'Emergência';
+                    statusTxt.className = 'locker-status-text text-[10px] uppercase font-semibold tracking-wider text-red-500 animate-pulse';
+                }
+                const iconCont = el.querySelector('.locker-icon');
+                if (iconCont) {
+                    iconCont.innerHTML = '<i data-lucide="alert-triangle" class="w-5 h-5 text-red-500 animate-pulse"></i>';
+                    lucide.createIcons({ root: iconCont });
+                }
+            });
+            
+            // Reseta botões
+            const btnStop = document.getElementById('btn-stop');
+            btnStop.innerHTML = `<i data-lucide="alert-triangle" class="w-4 h-4"></i><span>SISTEMA BLOQUEADO</span>`;
+            btnStop.classList.remove('hover:bg-red-900/60', 'cursor-pointer');
+            btnStop.classList.add('opacity-50', 'cursor-not-allowed');
+            lucide.createIcons({ root: btnStop });
+        }
+
+        function resetSimulation() {
+            // Reseta todo o estado (útil para pitch)
+            state.isCharging = false;
+            state.isTransitioning = false;
+            state.demoMode = false;
+            if (state.animationFrameId) cancelAnimationFrame(state.animationFrameId);
+            state.secondsElapsed = 0;
+            state.idleSecondsElapsed = 0;
+            state.isFullyCharged = false;
+            state.kwh = 0.0;
+            state.cost = 0.0;
+            
+            // Reseta UI
+            document.getElementById('timer-display').textContent = '00:00:00';
+            document.getElementById('kwh-display').textContent = '0.000';
+            document.getElementById('cost-display').textContent = 'R$ 0,00';
+            document.getElementById('demo-btn').textContent = 'Demo Mode: OFF';
+            document.getElementById('demo-btn').classList.remove('text-eco-neon', 'border-eco-neon');
+            document.getElementById('charging-panel').classList.remove('charging');
+            
+            document.getElementById('btn-start').classList.remove('hidden');
+            document.getElementById('btn-start').disabled = false;
+            
+            const btnStop = document.getElementById('btn-stop');
+            btnStop.classList.add('hidden');
+            btnStop.disabled = false;
+            btnStop.classList.remove('opacity-50', 'cursor-not-allowed', 'bg-red-900/20');
+            btnStop.classList.add('hover:bg-red-900/60', 'cursor-pointer');
+            btnStop.innerHTML = `<i data-lucide="stop-circle" class="w-4 h-4"></i><span>FINALIZAR RECARGA & COBRAR</span>`;
+            
+            const elLock = document.getElementById('locker-lock-status');
+            elLock.textContent = '[TRANCADO - AGUARDANDO]';
+            elLock.className = 'text-[11px] tracking-wide font-bold text-yellow-500';
+            
+            // Remove as classes de emergência dos Lockers
+            const lockerEls = document.querySelectorAll('.bg-red-900\\/20');
+            lockerEls.forEach(el => {
+                el.classList.remove('bg-red-900/20', 'border-red-500/50');
+            });
+            
+            // Reseta lockers para visual normal
+            lockers.forEach(l => l.status = (OCCUPIED_LOCKERS.includes(l.id) ? 'occupied' : 'available'));
+            if (state.selectedLocker) {
+                const lIdx = lockers.findIndex(lk => lk.id === state.selectedLocker);
+                if (lIdx > -1) lockers[lIdx].status = 'selected';
+            }
+            
+            renderLockers('locker-grid', true);
+            renderLockers('full-matrix-grid', false);
+            lucide.createIcons();
+            
+            addLog(`[SYS] Simulação resetada pelo Apresentador.`, 'info');
+        }
+
         /* =========================================
            2. SISTEMA DE LOGS E UI
            ========================================= */
@@ -813,6 +960,7 @@
             });
             
             addLog(`[SYS] Acionando destravamento (Relé Locker ${state.selectedLocker})...`, 'info');
+            playClickSound();
             
             setTimeout(() => {
                 state.isTransitioning = false;
@@ -896,6 +1044,7 @@
             elLock.textContent = '[FECHANDO PORTA...]';
             elLock.className = 'text-[11px] tracking-wide font-bold text-yellow-500 animate-pulse';
             addLog(`[POWER] Interrupção solicitada. Aguardando fechamento mecânico...`, 'warning');
+            playClickSound();
             
             const lockerEls = [
                 document.getElementById(`locker-mini-${state.selectedLocker}`),
@@ -946,6 +1095,7 @@
                     isNew: true
                 });
                 renderHistory();
+                playSuccessSound();
                 
                 // Atualiza Perfil do Usuário
                 userStats.sessions += 1;
@@ -1075,7 +1225,16 @@
         }
 
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && !modalsCont.classList.contains('hidden')) closeModals();
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            
+            const key = e.key.toLowerCase();
+            if (key === 'escape' && !modalsCont.classList.contains('hidden')) {
+                closeModals();
+            } else if (key === 'd') {
+                toggleDemoMode();
+            } else if (key === 'r') {
+                resetSimulation();
+            }
         });
 
         /* =========================================
