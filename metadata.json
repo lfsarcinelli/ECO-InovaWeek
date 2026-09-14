@@ -1,0 +1,6 @@
+{
+  "name": "ECO",
+  "description": "Rede de totens de recarga solar inteligente com armários blindados para bicicletas e patinetes elétricos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
